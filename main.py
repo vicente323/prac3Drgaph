@@ -16,6 +16,11 @@ def print_menu():
         3: "Delete person",
         4: "Drop All",
         5: "Exit",
+        6: "search friends artist",
+        7: "search users by more than Nfollowers",
+        8: "search how may users are in the graph",
+        9: "Get all users ordered"
+        
     }
     for key in mm_options.keys():
         print(key, '--', mm_options[key])
@@ -51,7 +56,7 @@ def main():
             model.search_person(client, person)
         if option == 3:
             person = input("Name: ")
-            model.delete_person(client, person)
+            model.delete_user(client, person)
         if option == 4:
             model.drop_all(client)
         if option == 5:
@@ -59,7 +64,16 @@ def main():
             close_client_stub(client_stub)
             exit(0)
 
-
+        if option == 6:
+            Artist = input("Artist: ")
+            model.search_friends_artists(client,Artist)
+        if option == 7:
+            x = input("Nfollowers: ")
+            model.get_users_with_gtr_follows(client,int(x))
+        if option== 8:
+            model.countUsers(client)
+        if option== 9:
+            model.getUsersOrder(client)
 if __name__ == '__main__':
     try:
         main()

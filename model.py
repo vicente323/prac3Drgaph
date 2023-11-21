@@ -1,81 +1,159 @@
 #!/usr/bin/env python3
 import datetime
 import json
-
+import pandas as pd 
 import pydgraph
-
+import ast
 
 
 def set_schema(client):
     schema = """
-    type Person {
-        name
-        friend
-        age
-        married
-        loc
-        dob
+    type Artist{
+        artistName
+        origin
+        followedByU
     }
 
-    name: string @index(exact) .
-    friend: [uid] @reverse .
-    age: int .
-    married: bool .
-    loc: geo .
-    dob: datetime .
+    type Albun{
+        AlbunName
+        Nsongs
+        publishedBy
+    }
+
+    type Song{
+
+        songName
+        time
+        releasedOn
+        appearsOn
+        likedBy
+    }
+
+    type user{
+        userName
+        Nfollowers
+        followedBy
+    }
+    type playlist{
+        playlistName
+        Nsongs
+        ownedBy
+        songs
+    }
+    releasedOn: datetime .
+    appearsOn: [uid] .
+    artistName: string @index(exact) .
+    origin: geo .
+    AlbunName: string @index(exact) .
+    Nsongs: int . 
+    time: int .
+    songName: string @index(exact) .
+    publishedBy: [uid] .
+    userName: string @index(exact) .
+    Nfollowers: int @index(int) .
+    followedBy: [uid]  .
+    followedByU: [uid] .
+    likedBy: [uid] .
+    playlistName: string @index(exact) .
+    ownedBy: [uid] .
+    songs: [uid] @reverse .
     """
     return client.alter(pydgraph.Operation(schema=schema))
 
+def data_parser(file:str):
 
+    '''
+        data parser, gets an txt and returns an array of dicts
+    '''
+    userfile = open(file,'r')
+    line = userfile.readlines()
+    line = line[0]
+
+    ArrayOfData = ast.literal_eval(line)
+  
+    userfile.close()
+    return(ArrayOfData)
+      
+  
 def create_data(client):
-    # Create a new transaction.
+  
+
+    albunDataArray = data_parser('albun.txt')
+    artistDataArray = data_parser('artist.txt')
+    userDataArray = data_parser('users.txt')
+    songsDataArray = data_parser('songs.txt')
+    playlistDataArray = data_parser('playlist.txt')
+    finalData = albunDataArray + artistDataArray + userDataArray + songsDataArray + playlistDataArray
     txn = client.txn()
     try:
-        p = {
-            'uid': '_:leo',
-            'dgraph.type': 'Person',
-            'name': 'Leo',
-            'age': 39,
-            'married': True,
-            'loc': {
-                'type': 'Point',
-                'coordinates': [-122.804489, 45.485168],
-            },
-            'dob': datetime.datetime(1984, 7, 9, 10, 0, 0, 0).isoformat(),
-            'friend': [
-                {
-                    'uid': '_:tomasa',
-                    'dgraph.type': 'Person',
-                    'name': 'Tomasa',
-                    'age': 13,
-                }
-            ],
-            'school': [
-                {
-                    'name': 'ITESO',
-                }
-            ]
-        }
+            p = finalData
+            
+            response = txn.mutate(set_obj=p)
 
-        response = txn.mutate(set_obj=p)
+            # Commit transaction.
+            commit_response = txn.commit()
+            print(f"Commit Response: {commit_response}")
 
-        # Commit transaction.
-        commit_response = txn.commit()
-        print(f"Commit Response: {commit_response}")
-
-        print(f"UIDs: {response.uids}")
+            print(f"UIDs: {response.uids}")
     finally:
-        # Clean up. 
-        # Calling this after txn.commit() is a no-op and hence safe.
-        txn.discard()
+            # Clean up. 
+            # Calling this after txn.commit() is a no-op and hence safe.
+            txn.discard()
+    
+def get_users_with_gtr_follows(client,x):
+    # Create a new transaction.
+    txn = client.txn()
+    
+    query = """query userWithXorMore($a: int) {
+             all(func: gt(Nfollowers, $a)) {
+                userName
+                Nfollowers
+            }
+        }"""
+    variables = {'$a': str(x)}
+    res = client.txn(read_only=True).query(query, variables=variables)
+    ppl = json.loads(res.json)
+    print(f"Number of people named {x}: {len(ppl['all'])}")
+    print(f"Data associated with {x}:\n{json.dumps(ppl, indent=2)}")
 
+def getUsersOrder(client):
+    query = """
+        query getUsers(){
+            getUsers(func: has(Nfollowers), order:{asc: Nfollowers}, first: 10, offset: 0) {
+                userName
+                Nfollowers
+            }
+        }
+        """
 
-def delete_person(client, name):
+        
+    res = client.txn(read_only=True).query(query)
+    ppl = json.loads(res.json)
+
+    # Print results.
+    print(f"Number of people : {len(ppl['all'])}")
+
+def countUsers(client):
+    query1 = """query countUsers() {
+            all(func: has(userName)) {
+               totalUsers:count(uid)
+            }
+        }"""
+
+ 
+    res = client.txn(read_only=True).query(query1)
+    ppl = json.loads(res.json)
+
+    # Print results.
+    print(f"Number of people : {len(ppl['all'])}")
+    
+
+def delete_user(client, name):
     # Create a new transaction.
     txn = client.txn()
     try:
         query1 = """query search_person($a: string) {
-            all(func: eq(name, $a)) {
+            all(func: eq(userName, $a)) {
                uid
             }
         }"""
@@ -90,34 +168,38 @@ def delete_person(client, name):
         print(commit_response)
     finally:
         txn.discard()
+def search_friends_artists(client,artistName):
+    query = """query searchArtist($a: string) {
+        all(func: eq(artistName, $a)) {
+           artistName
+           followedByU{
+          userName
+          followedBy{
 
-
-def search_person(client, name):
-    query = """query search_person($a: string) {
-        all(func: eq(name, $a)) {
-            uid
-            name
-            age
-            married
-            loc
-            dob
-            friend {
-                name
-                age
-            }
-            school {
-                name
+          userName}
             }
         }
     }"""
+    variables = {'$a': artistName}
+    res = client.txn(read_only=True).query(query, variables=variables)
+    ppl = json.loads(res.json)
+    print(f"Data associated with {artistName}:\n{json.dumps(ppl, indent=2)}")
 
-    variables = {'$a': name}
+def search_person(client, userName):
+    query = """query search_person($a: string) {
+        all(func: eq(userName, $a)) {
+            userName
+            Nfollowers
+        }
+    }"""
+
+    variables = {'$a': userName}
     res = client.txn(read_only=True).query(query, variables=variables)
     ppl = json.loads(res.json)
 
     # Print results.
-    print(f"Number of people named {name}: {len(ppl['all'])}")
-    print(f"Data associated with {name}:\n{json.dumps(ppl, indent=2)}")
+    print(f"Number of people named {userName}: {len(ppl['all'])}")
+    print(f"Data associated with {userName}:\n{json.dumps(ppl, indent=2)}")
 
 
 def drop_all(client):
